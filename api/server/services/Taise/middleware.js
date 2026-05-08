@@ -1,7 +1,6 @@
 const { handleError } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { getEndpointsConfig } = require('~/server/services/Config');
-const { getModelsConfig } = require('~/server/controllers/ModelController');
 const {
   applyRouteToBody,
   isForceModelEnabled,
@@ -19,11 +18,9 @@ async function taiseModelPolicyMiddleware(req, res, next) {
 
   try {
     const endpointsConfig = await getEndpointsConfig(req);
-    const modelsConfig = await getModelsConfig(req);
     const hasImages = requestHasImages(req.body);
     const policyResult = selectModelRoute({
       endpointsConfig,
-      modelsConfig,
       hasImages,
     });
 

@@ -1,5 +1,11 @@
+const mockGetEndpointsConfig = jest.fn();
+const mockLoadDefaultModels = jest.fn();
+const mockLoadConfigModels = jest.fn();
+
 jest.mock('~/server/services/Config', () => ({
-  getEndpointsConfig: jest.fn(),
+  getEndpointsConfig: mockGetEndpointsConfig,
+  loadDefaultModels: mockLoadDefaultModels,
+  loadConfigModels: mockLoadConfigModels,
 }));
 
 jest.mock('~/server/services/Endpoints/agents', () => ({
@@ -14,11 +20,14 @@ const {
   applyRouteToBody,
   filterEndpointsConfig,
   filterModelsConfig,
+  getStaticModelsConfig,
   parseModelFallbacks,
   requestHasImages,
   selectModelRoute,
 } = require('./modelPolicy');
 const { createInitializeClientWithFallback, sendMessageWithFallback } = require('./fallback');
+const { loadModels } = require('~/server/controllers/ModelController');
+const { taiseModelPolicyMiddleware } = require('./middleware');
 
 const withEnv = async (env, callback) => {
   const originalEnv = { ...process.env };
@@ -39,6 +48,21 @@ const withEnv = async (env, callback) => {
 };
 
 describe('Taise model policy', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetEndpointsConfig.mockResolvedValue({
+      [EModelEndpoint.openAI]: { userProvide: false },
+      [EModelEndpoint.anthropic]: { userProvide: false },
+      [EModelEndpoint.google]: { userProvide: false },
+    });
+    mockLoadDefaultModels.mockResolvedValue({
+      [EModelEndpoint.openAI]: ['gpt-4o'],
+    });
+    mockLoadConfigModels.mockResolvedValue({
+      OpenRouter: ['meta-llama/llama-3-70b-instruct'],
+    });
+  });
+
   it('parses configured fallback routes and ignores invalid entries', () => {
     expect(
       parseModelFallbacks(
@@ -49,6 +73,19 @@ describe('Taise model policy', () => {
       { endpoint: EModelEndpoint.anthropic, model: 'claude-3-5-haiku-20241022' },
       { endpoint: EModelEndpoint.google, model: 'gemini-2.5-flash-lite' },
     ]);
+  });
+
+  it('builds static model availability from Taise fallbacks', () => {
+    expect(
+      getStaticModelsConfig({
+        TAISE_MODEL_FALLBACKS:
+          'openAI:gpt-5-mini,anthropic:claude-3-5-haiku-20241022,google:gemini-2.5-flash-lite,openAI:gpt-5-mini',
+      }),
+    ).toEqual({
+      [EModelEndpoint.openAI]: ['gpt-5-mini'],
+      [EModelEndpoint.anthropic]: ['claude-3-5-haiku-20241022'],
+      [EModelEndpoint.google]: ['gemini-2.5-flash-lite'],
+    });
   });
 
   it('uses system provider keys from env instead of user-provided endpoint credentials', () =>
@@ -140,6 +177,27 @@ describe('Taise model policy', () => {
       model: 'gpt-5-mini',
       reason: 'endpoint_not_configured',
     });
+  });
+
+  it('selects routes using static Taise fallback models without dynamic model lists', () => {
+    const result = selectModelRoute({
+      env: {
+        TAISE_MODEL_FALLBACKS:
+          'openAI:gpt-5-mini,anthropic:claude-3-5-haiku-20241022,google:gemini-2.5-flash-lite',
+      },
+      endpointsConfig: {
+        [EModelEndpoint.openAI]: { userProvide: false },
+        [EModelEndpoint.anthropic]: { userProvide: false },
+        [EModelEndpoint.google]: { userProvide: false },
+      },
+      modelsConfig: {},
+    });
+
+    expect(result.selectedRoute).toEqual({
+      endpoint: EModelEndpoint.openAI,
+      model: 'gpt-5-mini',
+    });
+    expect(result.skipped).toEqual([]);
   });
 
   it('uses the same fallback list for image chats and rejects incompatible routes', () => {
@@ -258,14 +316,61 @@ describe('Taise model policy', () => {
 
         expect(
           filterModelsConfig({
-            [EModelEndpoint.openAI]: ['gpt-5-mini', 'gpt-4o'],
-            [EModelEndpoint.anthropic]: ['claude-3-5-haiku-20241022'],
-            [EModelEndpoint.google]: ['gemini-2.5-flash-lite', 'gemini-pro'],
+            [EModelEndpoint.openAI]: ['gpt-4o'],
+            OpenRouter: ['meta-llama/llama-3-70b-instruct'],
           }),
         ).toEqual({
           [EModelEndpoint.openAI]: ['gpt-5-mini'],
           [EModelEndpoint.anthropic]: ['claude-3-5-haiku-20241022'],
           [EModelEndpoint.google]: ['gemini-2.5-flash-lite'],
+        });
+      },
+    ));
+
+  it('returns static Taise models without fetching provider or custom endpoint models', () =>
+    withEnv(
+      {
+        TAISE_MODEL_POLICY_ENABLED: 'true',
+        TAISE_MODEL_FALLBACKS:
+          'openAI:gpt-5-mini,anthropic:claude-3-5-haiku-20241022,google:gemini-2.5-flash-lite',
+      },
+      async () => {
+        await expect(loadModels({ user: { id: 'user-1' } })).resolves.toEqual({
+          [EModelEndpoint.openAI]: ['gpt-5-mini'],
+          [EModelEndpoint.anthropic]: ['claude-3-5-haiku-20241022'],
+          [EModelEndpoint.google]: ['gemini-2.5-flash-lite'],
+        });
+        expect(mockLoadDefaultModels).not.toHaveBeenCalled();
+        expect(mockLoadConfigModels).not.toHaveBeenCalled();
+      },
+    ));
+
+  it('applies Taise middleware using endpoint config only', () =>
+    withEnv(
+      {
+        TAISE_MODEL_POLICY_ENABLED: 'true',
+        TAISE_FORCE_MODEL: 'true',
+        TAISE_MODEL_FALLBACKS:
+          'openAI:gpt-5-mini,anthropic:claude-3-5-haiku-20241022,google:gemini-2.5-flash-lite',
+      },
+      async () => {
+        const req = {
+          body: {
+            endpoint: EModelEndpoint.google,
+            model: 'stale-client-model',
+          },
+        };
+        const next = jest.fn();
+
+        await taiseModelPolicyMiddleware(req, {}, next);
+
+        expect(mockGetEndpointsConfig).toHaveBeenCalledTimes(1);
+        expect(mockLoadDefaultModels).not.toHaveBeenCalled();
+        expect(mockLoadConfigModels).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.body).toMatchObject({
+          endpoint: EModelEndpoint.openAI,
+          model: 'gpt-5-mini',
         });
       },
     ));

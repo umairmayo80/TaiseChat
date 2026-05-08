@@ -117,6 +117,18 @@ function getModelFallbacks(env = process.env) {
   return parseModelFallbacks(env.TAISE_MODEL_FALLBACKS);
 }
 
+function getStaticModelsConfig(env = process.env) {
+  const modelsConfig = {};
+
+  for (const route of getModelFallbacks(env)) {
+    modelsConfig[route.endpoint] = [
+      ...new Set([...(modelsConfig[route.endpoint] ?? []), route.model]),
+    ];
+  }
+
+  return modelsConfig;
+}
+
 function routeSupportsImageInput(route) {
   if (!IMAGE_INPUT_ENDPOINTS.has(route?.endpoint)) {
     return false;
@@ -204,13 +216,9 @@ function isModelAvailable(route, modelsConfig = {}) {
   return Array.isArray(availableModels) && availableModels.includes(route.model);
 }
 
-function getRouteSkipReason({ route, endpointsConfig, modelsConfig, hasImages }) {
+function getRouteSkipReason({ route, endpointsConfig, hasImages }) {
   if (!isEndpointConfigured(route.endpoint, endpointsConfig)) {
     return 'endpoint_not_configured';
-  }
-
-  if (!isModelAvailable(route, modelsConfig)) {
-    return 'model_not_available';
   }
 
   if (hasImages && !routeSupportsImageInput(route)) {
@@ -220,13 +228,13 @@ function getRouteSkipReason({ route, endpointsConfig, modelsConfig, hasImages })
   return null;
 }
 
-function selectModelRoute({ endpointsConfig, modelsConfig, env = process.env, hasImages = false }) {
+function selectModelRoute({ endpointsConfig, env = process.env, hasImages = false }) {
   const fallbacks = getModelFallbacks(env);
   const skipped = [];
   const usableRoutes = [];
 
   for (const route of fallbacks) {
-    const reason = getRouteSkipReason({ route, endpointsConfig, modelsConfig, hasImages });
+    const reason = getRouteSkipReason({ route, endpointsConfig, hasImages });
     if (reason) {
       skipped.push({ ...route, reason });
       continue;
@@ -263,19 +271,7 @@ function filterModelsConfig(modelsConfig = {}, env = process.env) {
     return modelsConfig;
   }
 
-  const result = {};
-  const fallbackRoutes = getModelFallbacks(env);
-
-  for (const route of fallbackRoutes) {
-    const availableModels = modelsConfig?.[route.endpoint];
-    if (!Array.isArray(availableModels) || !availableModels.includes(route.model)) {
-      continue;
-    }
-
-    result[route.endpoint] = [...new Set([...(result[route.endpoint] ?? []), route.model])];
-  }
-
-  return result;
+  return getStaticModelsConfig(env);
 }
 
 function filterEndpointsConfig(endpointsConfig = {}, env = process.env) {
@@ -314,6 +310,7 @@ module.exports = {
   filterModelsConfig,
   getModelFallbacks,
   getModelLabel,
+  getStaticModelsConfig,
   isEndpointConfigured,
   isForceModelEnabled,
   isModelAvailable,
