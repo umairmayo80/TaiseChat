@@ -10,6 +10,7 @@ const {
   checkAndIncrementPendingRequest,
 } = require('@librechat/api');
 const { disposeClient, clientRegistry, requestDataMap } = require('~/server/cleanup');
+const { sendMessageWithFallback } = require('~/server/services/Taise/fallback');
 const { handleAbortError } = require('~/server/middleware');
 const { logViolation } = require('~/cache');
 const { saveMessage, getConvo } = require('~/models');
@@ -82,7 +83,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
   const {
     text,
     isRegenerate,
-    endpointOption,
+    endpointOption: initialEndpointOption,
     conversationId: reqConversationId,
     isContinued = false,
     editedContent = null,
@@ -91,6 +92,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
     responseMessageId: editedResponseMessageId = null,
   } = req.body;
 
+  let endpointOption = initialEndpointOption;
   const userId = req.user.id;
 
   const { allowed, pendingRequests, limit } = await checkAndIncrementPendingRequest(userId);
@@ -289,7 +291,31 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
           },
         };
 
-        const response = await client.sendMessage(text, messageOptions);
+        const sendResult = await sendMessageWithFallback({
+          req,
+          res,
+          text,
+          client,
+          signal: job.abortController.signal,
+          endpointOption,
+          messageOptions,
+          initializeClient,
+          onClientChange: (nextClient, nextEndpointOption) => {
+            client = nextClient;
+            endpointOption = nextEndpointOption;
+
+            if (client?.sender) {
+              GenerationJobManager.updateMetadata(streamId, { sender: client.sender });
+            }
+
+            if (client?.contentParts) {
+              GenerationJobManager.setContentParts(streamId, client.contentParts);
+            }
+          },
+        });
+        client = sendResult.client;
+        endpointOption = sendResult.endpointOption;
+        const response = sendResult.response;
 
         const messageId = response.messageId;
         const endpoint = endpointOption.endpoint;

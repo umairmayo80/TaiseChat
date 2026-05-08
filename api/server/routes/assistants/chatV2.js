@@ -10,6 +10,7 @@ const {
 const validateConvoAccess = require('~/server/middleware/validate/convoAccess');
 const validateAssistant = require('~/server/middleware/assistants/validate');
 const chatController = require('~/server/controllers/assistants/chatV2');
+const { rejectAssistantRouteIfTaiseForced } = require('~/server/services/Taise');
 
 router.post('/abort', handleAbort());
 
@@ -23,6 +24,7 @@ router.post('/abort', handleAbort());
  */
 router.post(
   '/',
+  rejectAssistantRouteIfTaiseForced,
   validateModel,
   buildEndpointOption,
   validateAssistant,

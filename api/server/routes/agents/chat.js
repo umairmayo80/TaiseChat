@@ -11,6 +11,10 @@ const {
 const { initializeClient } = require('~/server/services/Endpoints/agents');
 const AgentController = require('~/server/controllers/agents/request');
 const addTitle = require('~/server/services/Endpoints/agents/title');
+const {
+  createInitializeClientWithFallback,
+  taiseModelPolicyMiddleware,
+} = require('~/server/services/Taise');
 const { getRoleByName } = require('~/models');
 
 const router = express.Router();
@@ -24,15 +28,17 @@ const checkAgentAccess = generateCheckAccess({
 const checkAgentResourceAccess = canAccessAgentFromBody({
   requiredPermission: PermissionBits.VIEW,
 });
+const initializeClientWithTaiseFallback = createInitializeClientWithFallback(initializeClient);
 
 router.use(moderateText);
+router.use(taiseModelPolicyMiddleware);
 router.use(checkAgentAccess);
 router.use(checkAgentResourceAccess);
 router.use(validateConvoAccess);
 router.use(buildEndpointOption);
 
 const controller = async (req, res, next) => {
-  await AgentController(req, res, next, initializeClient, addTitle);
+  await AgentController(req, res, next, initializeClientWithTaiseFallback, addTitle);
 };
 
 /**

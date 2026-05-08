@@ -1,12 +1,13 @@
 const { logger } = require('@librechat/data-schemas');
 const { loadDefaultModels, loadConfigModels } = require('~/server/services/Config');
+const { filterModelsConfig } = require('~/server/services/Taise/modelPolicy');
 
 const getModelsConfig = (req) => loadModels(req);
 
 async function loadModels(req) {
   const defaultModelsConfig = await loadDefaultModels(req);
   const customModelsConfig = await loadConfigModels(req);
-  return { ...defaultModelsConfig, ...customModelsConfig };
+  return filterModelsConfig({ ...defaultModelsConfig, ...customModelsConfig });
 }
 
 async function modelController(req, res) {

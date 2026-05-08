@@ -28,6 +28,12 @@ TaiseChat is currently based on LibreChat v0.8.5. The fork intentionally keeps m
 
 That compatibility is intentional for now: it keeps upstream architecture, build tooling, and package boundaries stable while TAISE-specific product behavior is layered in.
 
+## Taise Model Policy
+
+TaiseChat includes an isolated in-process Taise model policy service at `api/server/services/Taise`. Enable it with `TAISE_MODEL_POLICY_ENABLED=true` and configure the server-owned fallback order with `TAISE_MODEL_FALLBACKS`, for example `openAI:gpt-5-mini,anthropic:claude-3-5-haiku-20241022,google:gemini-2.5-flash-lite`.
+
+The visible picker is controlled by YAML, not env. Set `interface.modelSelect: false` in `librechat.yaml` to hide model selection while Taise rewrites chat requests to the selected backend route. Image chats use the same fallback list and require a compatible configured route.
+
 ## Local Development
 
 Use the run guide for detailed setup:

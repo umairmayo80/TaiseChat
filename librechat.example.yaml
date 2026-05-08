@@ -96,9 +96,9 @@ interface:
 
       By using the Website, you acknowledge that you have read these Terms of Service and agree to be bound by them.
 
-  modelSelect: true
-  parameters: true
-  presets: true
+  modelSelect: false
+  parameters: false
+  presets: false
   prompts:
     use: true
     create: true
