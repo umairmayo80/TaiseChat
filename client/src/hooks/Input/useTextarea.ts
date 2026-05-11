@@ -1,7 +1,6 @@
 import debounce from 'lodash/debounce';
 import { useEffect, useRef, useCallback } from 'react';
 import { useRecoilValue, useRecoilState } from 'recoil';
-import type { TEndpointOption } from 'librechat-data-provider';
 import type { KeyboardEvent } from 'react';
 import {
   forceResize,
@@ -12,7 +11,6 @@ import {
 } from '~/utils';
 import { useAssistantsMapContext } from '~/Providers/AssistantsMapContext';
 import { useAgentsMapContext } from '~/Providers/AgentsMapContext';
-import useGetSender from '~/hooks/Conversations/useGetSender';
 import useFileHandling from '~/hooks/Files/useFileHandling';
 import { useInteractionHealthCheck } from '~/data-provider';
 import { useChatContext } from '~/Providers/ChatContext';
@@ -21,6 +19,8 @@ import { useLocalize } from '~/hooks';
 import store from '~/store';
 
 type KeyEvent = KeyboardEvent<HTMLTextAreaElement>;
+
+const TAISE_PLACEHOLDER_SENDER = 'Taise';
 
 export default function useTextarea({
   textAreaRef,
@@ -34,7 +34,6 @@ export default function useTextarea({
   disabled?: boolean;
 }) {
   const localize = useLocalize();
-  const getSender = useGetSender();
   const isComposing = useRef(false);
   const agentsMap = useAgentsMapContext();
   const { handleFiles } = useFileHandling();
@@ -97,7 +96,7 @@ export default function useTextarea({
       const sender =
         isAssistant || isAgent
           ? getEntityName({ name: entityName, isAgent, localize })
-          : getSender(conversation as TEndpointOption);
+          : TAISE_PLACEHOLDER_SENDER;
 
       return `${localize('com_endpoint_message_new', {
         0: sender ? sender : localize('com_endpoint_ai'),
@@ -127,7 +126,6 @@ export default function useTextarea({
     isAgent,
     localize,
     disabled,
-    getSender,
     agentsMap,
     entityName,
     textAreaRef,
