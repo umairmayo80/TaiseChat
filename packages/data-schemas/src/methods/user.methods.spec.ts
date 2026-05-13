@@ -203,6 +203,7 @@ describe('User Methods - Database Tests', () => {
       expect(user).toBeDefined();
       expect(user?.name).toBe('New User');
       expect(user?.email).toBe('new@example.com');
+      expect(user?.hunNumber).toMatch(/^HUN-\d{3}-\d{3}-\d{3}$/);
     });
 
     test('should create a user and return user object when returnUser is true', async () => {
@@ -220,6 +221,7 @@ describe('User Methods - Database Tests', () => {
       expect(result).toHaveProperty('_id');
       expect(result).toHaveProperty('name', 'New User');
       expect(result).toHaveProperty('email', 'new@example.com');
+      expect(result).toHaveProperty('hunNumber');
     });
 
     test('should store email as lowercase regardless of input case', async () => {

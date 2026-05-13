@@ -15,6 +15,11 @@ const mockUseGetStartupConfig = jest.fn();
 
 jest.mock('~/hooks', () => ({
   useAuthContext: () => mockUseAuthContext(),
+  useLocalize: () => (key: string) =>
+    ({
+      com_auth_hun_not_assigned: 'Not assigned',
+      com_auth_hun_number: 'Your HUN',
+    })[key] ?? key,
 }));
 
 jest.mock('~/data-provider', () => ({
@@ -24,6 +29,7 @@ jest.mock('~/data-provider', () => ({
 const baseUser: TUser = {
   id: 'user-123',
   username: 'testuser',
+  hunNumber: 'HUN-198-777-888',
   email: 'test@example.com',
   name: 'Test User',
   avatar: '',
@@ -43,6 +49,12 @@ afterEach(() => {
 });
 
 describe('Account', () => {
+  it('shows the user HUN number', () => {
+    render(<Account />);
+    expect(screen.getByText('Your HUN')).toBeInTheDocument();
+    expect(screen.getByText('HUN-198-777-888')).toBeInTheDocument();
+  });
+
   describe('DeleteAccount visibility', () => {
     it('renders DeleteAccount when allowAccountDeletion is true', () => {
       render(<Account />);

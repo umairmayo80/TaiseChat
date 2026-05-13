@@ -14,6 +14,8 @@ export interface IUser extends Document {
   id: string;
   name?: string;
   username?: string;
+  hunNumber?: string;
+  dateOfBirth?: string;
   email: string;
   emailVerified: boolean;
   password?: string;
@@ -86,6 +88,8 @@ export interface CreateUserRequest extends Partial<IUser> {
 export interface UpdateUserRequest {
   name?: string;
   username?: string;
+  hunNumber?: string;
+  dateOfBirth?: string;
   email?: string;
   role?: string;
   emailVerified?: boolean;

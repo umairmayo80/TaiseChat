@@ -2,6 +2,7 @@ import reactRouter from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { render, waitFor, screen } from 'test/layout-test-utils';
 import * as mockDataProvider from 'librechat-data-provider/react-query';
+import * as dataProvider from 'librechat-data-provider';
 import type { TStartupConfig } from 'librechat-data-provider';
 import * as miscDataProvider from '~/data-provider/Misc/queries';
 import * as endpointQueries from '~/data-provider/Endpoints/queries';
@@ -11,6 +12,24 @@ import Registration from '~/components/Auth/Registration';
 import AuthLayout from '~/components/Auth/AuthLayout';
 
 jest.mock('librechat-data-provider/react-query');
+jest.mock('librechat-data-provider', () => {
+  const actual = jest.requireActual('librechat-data-provider');
+  return {
+    ...actual,
+    dataService: {
+      ...actual.dataService,
+      getHunRegistration: jest.fn(),
+    },
+  };
+});
+
+const dateYearsAgo = (years: number, dayOffset = 0) => {
+  const date = new Date();
+  date.setUTCHours(12, 0, 0, 0);
+  date.setUTCFullYear(date.getUTCFullYear() - years);
+  date.setUTCDate(date.getUTCDate() + dayOffset);
+  return date.toISOString().slice(0, 10);
+};
 
 const mockStartupConfig = {
   isFetching: false,
@@ -64,6 +83,11 @@ const setup = ({
   },
   useGetStartupConfigReturnValue = mockStartupConfig,
 } = {}) => {
+  const mockGetHunRegistration = dataProvider.dataService.getHunRegistration as jest.Mock;
+  mockGetHunRegistration.mockResolvedValue({
+    hunNumber: 'HUN-198-777-888',
+    hunToken: 'signed-hun-token',
+  });
   const mockUseRegisterUserMutation = jest
     .spyOn(mockDataProvider, 'useRegisterUserMutation')
     //@ts-ignore - we don't need all parameters of the QueryObserverSuccessResult
@@ -103,6 +127,7 @@ const setup = ({
   return {
     ...renderResult,
     mockUseGetUserQuery,
+    mockGetHunRegistration,
     mockUseOutletContext,
     mockUseGetStartupConfig,
     mockUseRegisterUserMutation,
@@ -117,12 +142,14 @@ jest.mock('react-router-dom', () => ({
   }),
 }));
 
-test('renders registration form', () => {
-  const { getByText, getByTestId, getByRole } = setup();
+test('renders registration form', async () => {
+  const { getByText, getByTestId, getByRole, queryByRole, getByLabelText } = setup();
   expect(getByText(/Create your account/i)).toBeInTheDocument();
   expect(getByRole('textbox', { name: /Full name/i })).toBeInTheDocument();
   expect(getByRole('form', { name: /Registration form/i })).toBeVisible();
-  expect(getByRole('textbox', { name: /Username/i })).toBeInTheDocument();
+  expect(queryByRole('textbox', { name: /Username/i })).not.toBeInTheDocument();
+  await waitFor(() => expect(getByTestId('hunNumber')).toHaveValue('Your HUN: HUN-198-777-888'));
+  expect(getByLabelText(/DOB/i)).toBeInTheDocument();
   expect(getByRole('textbox', { name: /Email/i })).toBeInTheDocument();
   expect(getByTestId('password')).toBeInTheDocument();
   expect(getByTestId('confirm_password')).toBeInTheDocument();
@@ -185,7 +212,7 @@ test('renders registration form', () => {
 test('shows validation error messages', async () => {
   const { getByTestId, getAllByRole, getByRole } = setup();
   await userEvent.type(getByRole('textbox', { name: /Full name/i }), 'J');
-  await userEvent.type(getByRole('textbox', { name: /Username/i }), 'j');
+  await userEvent.type(getByTestId('dateOfBirth'), dateYearsAgo(18, 1));
   await userEvent.type(getByRole('textbox', { name: /Email/i }), 'test');
   await userEvent.type(getByTestId('password'), 'pass');
   await userEvent.type(getByTestId('confirm_password'), 'password1');
@@ -196,7 +223,7 @@ test('shows validation error messages', async () => {
   expect(alerts[0]).toHaveTextContent('');
 
   expect(alerts[1]).toHaveTextContent(/Name must be at least 3 characters/i);
-  expect(alerts[2]).toHaveTextContent(/Username must be at least 2 characters/i);
+  expect(alerts[2]).toHaveTextContent(/Under 18 signup is not allowed at the moment/i);
   expect(alerts[3]).toHaveTextContent(/You must enter a valid email address/i);
   expect(alerts[4]).toHaveTextContent(/Password must be at least 8 characters/i);
   expect(alerts[5]).toHaveTextContent(/Passwords do not match/i);
@@ -215,8 +242,9 @@ test('shows error message when registration fails', async () => {
     },
   });
 
+  await waitFor(() => expect(getByTestId('hunNumber')).toHaveValue('Your HUN: HUN-198-777-888'));
   await userEvent.type(getByRole('textbox', { name: /Full name/i }), 'John Doe');
-  await userEvent.type(getByRole('textbox', { name: /Username/i }), 'johndoe');
+  await userEvent.type(getByTestId('dateOfBirth'), dateYearsAgo(18));
   await userEvent.type(getByRole('textbox', { name: /Email/i }), 'test@test.com');
   await userEvent.type(getByTestId('password'), 'password');
   await userEvent.type(getByTestId('confirm_password'), 'password');
@@ -228,4 +256,37 @@ test('shows error message when registration fails', async () => {
       /There was an error attempting to register your account. Please try again. Registration failed/i,
     );
   });
+});
+
+test('submits HUN and DOB with registration payload', async () => {
+  const mutate = jest.fn();
+  const { getByTestId, getByRole } = setup({
+    useRegisterUserMutationReturnValue: {
+      isLoading: false,
+      isError: false,
+      mutate,
+      error: null,
+      data: {},
+      isSuccess: false,
+    },
+  });
+
+  await waitFor(() => expect(getByTestId('hunNumber')).toHaveValue('Your HUN: HUN-198-777-888'));
+  await userEvent.type(getByRole('textbox', { name: /Full name/i }), 'John Doe');
+  await userEvent.type(getByTestId('dateOfBirth'), dateYearsAgo(18));
+  await userEvent.type(getByRole('textbox', { name: /Email/i }), 'test@test.com');
+  await userEvent.type(getByTestId('password'), 'password');
+  await userEvent.type(getByTestId('confirm_password'), 'password');
+  await userEvent.click(getByRole('button', { name: /Submit registration/i }));
+
+  await waitFor(() =>
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dateOfBirth: dateYearsAgo(18),
+        hunNumber: 'HUN-198-777-888',
+        hunToken: 'signed-hun-token',
+        username: '',
+      }),
+    ),
+  );
 });

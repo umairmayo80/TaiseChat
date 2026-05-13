@@ -2,6 +2,7 @@ jest.mock('@librechat/data-schemas', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() },
   DEFAULT_SESSION_EXPIRY: 900000,
   DEFAULT_REFRESH_TOKEN_EXPIRY: 604800000,
+  runAsSystem: jest.fn((fn) => fn()),
 }));
 jest.mock('librechat-data-provider', () => ({
   ErrorTypes: {},
@@ -33,25 +34,43 @@ jest.mock('~/models', () => ({
   deleteUserById: jest.fn(),
   generateRefreshToken: jest.fn(),
 }));
-jest.mock('~/strategies/validators', () => ({ registerSchema: { parse: jest.fn() } }));
+jest.mock('~/strategies/validators', () => jest.requireActual('~/strategies/validators'));
 jest.mock('~/server/services/Config', () => ({ getAppConfig: jest.fn() }));
 jest.mock('~/server/utils', () => ({ sendEmail: jest.fn() }));
 
 const {
+  checkEmailConfig,
   shouldUseSecureCookie,
   isEmailDomainAllowed,
   resolveAppConfigForUser,
   setCloudFrontCookies,
 } = require('@librechat/api');
 const {
+  countUsers,
+  createUser,
   findUser,
   getUserById,
   generateToken,
   generateRefreshToken,
   createSession,
+  updateUser,
 } = require('~/models');
 const { getAppConfig } = require('~/server/services/Config');
-const { setOpenIDAuthTokens, requestPasswordReset, setAuthTokens } = require('./AuthService');
+const { signHunToken } = require('./HunService');
+const {
+  registerUser,
+  setOpenIDAuthTokens,
+  requestPasswordReset,
+  setAuthTokens,
+} = require('./AuthService');
+
+const dateYearsAgo = (years, dayOffset = 0) => {
+  const date = new Date();
+  date.setUTCHours(12, 0, 0, 0);
+  date.setUTCFullYear(date.getUTCFullYear() - years);
+  date.setUTCDate(date.getUTCDate() + dayOffset);
+  return date.toISOString().slice(0, 10);
+};
 
 /** Helper to build a mock Express response */
 function mockResponse() {
@@ -409,5 +428,75 @@ describe('CloudFront cookie integration', () => {
 
       expect(result).toBe('mock-access-token');
     });
+  });
+});
+
+describe('registerUser HUN and DOB', () => {
+  const hunNumber = 'HUN-198-777-888';
+  const validUser = () => ({
+    name: 'John Doe',
+    email: 'john@example.com',
+    password: 'password123',
+    confirm_password: 'password123',
+    dateOfBirth: dateYearsAgo(18),
+    hunNumber,
+    hunToken: signHunToken(hunNumber),
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.JWT_SECRET = 'test-hun-secret';
+    getAppConfig.mockResolvedValue({ registration: {} });
+    isEmailDomainAllowed.mockReturnValue(true);
+    findUser.mockResolvedValue(null);
+    countUsers.mockResolvedValue(1);
+    checkEmailConfig.mockReturnValue(false);
+    createUser.mockResolvedValue({ _id: 'new-user-id', emailVerified: false });
+    updateUser.mockResolvedValue({});
+  });
+
+  it('stores HUN number and DOB during public registration', async () => {
+    const result = await registerUser(
+      validUser(),
+      {},
+      { requireDateOfBirth: true, requireHun: true },
+    );
+
+    expect(result.status).toBe(200);
+    expect(createUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hunNumber,
+        dateOfBirth: dateYearsAgo(18),
+      }),
+      undefined,
+      expect.any(Boolean),
+      true,
+    );
+  });
+
+  it('rejects invalid HUN tokens', async () => {
+    const result = await registerUser(
+      { ...validUser(), hunToken: 'not-a-valid-token' },
+      {},
+      { requireDateOfBirth: true, requireHun: true },
+    );
+
+    expect(result.status).toBe(400);
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict when generated HUN is already assigned', async () => {
+    findUser.mockImplementation((criteria) =>
+      criteria.hunNumber ? Promise.resolve({ _id: 'existing-user-id' }) : Promise.resolve(null),
+    );
+
+    const result = await registerUser(
+      validUser(),
+      {},
+      { requireDateOfBirth: true, requireHun: true },
+    );
+
+    expect(result.status).toBe(409);
+    expect(createUser).not.toHaveBeenCalled();
   });
 });

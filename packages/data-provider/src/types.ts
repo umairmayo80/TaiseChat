@@ -207,6 +207,8 @@ export type TBackupCode = {
 export type TUser = {
   id: string;
   username: string;
+  hunNumber?: string;
+  dateOfBirth?: string;
   email: string;
   name: string;
   avatar: string;
@@ -414,10 +416,18 @@ export type TRegisterUserResponse = {
   message: string;
 };
 
+export type THunRegistrationResponse = {
+  hunNumber: string;
+  hunToken: string;
+};
+
 export type TRegisterUser = {
   name: string;
   email: string;
-  username: string;
+  username?: string;
+  hunNumber?: string;
+  hunToken?: string;
+  dateOfBirth?: string;
   password: string;
   confirm_password?: string;
   token?: string;

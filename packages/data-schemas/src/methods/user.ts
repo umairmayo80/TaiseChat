@@ -1,9 +1,27 @@
+import { randomInt } from 'crypto';
 import mongoose, { FilterQuery } from 'mongoose';
 import type { IUser, BalanceConfig, CreateUserRequest, UserDeleteResult } from '~/types';
+import { runAsSystem } from '~/config/tenantContext';
 import { signPayload } from '~/crypto';
 
 /** Default JWT session expiry: 15 minutes in milliseconds */
 export const DEFAULT_SESSION_EXPIRY = 1000 * 60 * 15;
+
+const HUN_MAX_ATTEMPTS = 50;
+
+export function generateHunNumber(): string {
+  const segment = () => randomInt(100, 1000).toString();
+  return `HUN-${segment()}-${segment()}-${segment()}`;
+}
+
+function isDuplicateHunNumberError(error: unknown): boolean {
+  const err = error as {
+    code?: number;
+    keyPattern?: Record<string, unknown>;
+    keyValue?: Record<string, unknown>;
+  };
+  return err?.code === 11000 && (!!err?.keyPattern?.hunNumber || !!err?.keyValue?.hunNumber);
+}
 
 /** Factory function that takes mongoose instance and returns the methods */
 export function createUserMethods(mongoose: typeof import('mongoose')) {
@@ -75,6 +93,20 @@ export function createUserMethods(mongoose: typeof import('mongoose')) {
     return await User.countDocuments(filter);
   }
 
+  async function generateUniqueHunNumber(User: mongoose.Model<IUser>): Promise<string> {
+    for (let attempt = 0; attempt < HUN_MAX_ATTEMPTS; attempt++) {
+      const hunNumber = generateHunNumber();
+      const existingUser = await runAsSystem(async () =>
+        User.findOne({ hunNumber }, { _id: 1 }).lean(),
+      );
+      if (!existingUser) {
+        return hunNumber;
+      }
+    }
+
+    throw new Error('Unable to generate a unique HUN number');
+  }
+
   /**
    * Creates a new user, optionally with a TTL of 1 week.
    */
@@ -84,7 +116,7 @@ export function createUserMethods(mongoose: typeof import('mongoose')) {
     disableTTL: boolean = true,
     returnUser: boolean = false,
   ): Promise<mongoose.Types.ObjectId | Partial<IUser>> {
-    const User = mongoose.models.User;
+    const User = mongoose.models.User as mongoose.Model<IUser>;
     const Balance = mongoose.models.Balance;
 
     const userData: Partial<IUser> = {
@@ -96,7 +128,28 @@ export function createUserMethods(mongoose: typeof import('mongoose')) {
       delete userData.expiresAt;
     }
 
-    const user = await User.create(userData);
+    const shouldGenerateHunNumber = !userData.hunNumber;
+    let user: mongoose.HydratedDocument<IUser> | null = null;
+    for (let attempt = 0; attempt < HUN_MAX_ATTEMPTS; attempt++) {
+      if (shouldGenerateHunNumber) {
+        userData.hunNumber = await generateUniqueHunNumber(User);
+      }
+
+      try {
+        user = await User.create(userData);
+        break;
+      } catch (error) {
+        if (shouldGenerateHunNumber && isDuplicateHunNumberError(error)) {
+          delete userData.hunNumber;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!user) {
+      throw new Error('Unable to create user with a unique HUN number');
+    }
 
     // If balance is enabled, create or update a balance record for the user
     if (balanceConfig?.enabled && balanceConfig?.startBalance) {

@@ -50,6 +50,7 @@ export enum QueryKeys {
   rolesList = 'rolesList',
   conversationTags = 'conversationTags',
   health = 'health',
+  hunRegistration = 'hunRegistration',
   userTerms = 'userTerms',
   banner = 'banner',
   /* Memories */

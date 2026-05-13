@@ -150,6 +150,10 @@ export const login = (payload: t.TLoginUser): Promise<t.TLoginResponse> => {
   return request.post(endpoints.login(), payload);
 };
 
+export const getHunRegistration = (): Promise<t.THunRegistrationResponse> => {
+  return request.get(endpoints.hunRegistration());
+};
+
 export const logout = (): Promise<m.TLogoutResponse> => {
   return request.post(endpoints.logout());
 };

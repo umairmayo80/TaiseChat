@@ -6,6 +6,7 @@ const {
   registrationController,
   graphTokenController,
   refreshController,
+  hunController,
 } = require('~/server/controllers/AuthController');
 const {
   regenerateBackupCodes,
@@ -42,6 +43,7 @@ router.post(
   loginController,
 );
 router.post('/refresh', refreshController);
+router.get('/hun', middleware.registerLimiter, middleware.checkBan, hunController);
 router.post(
   '/register',
   middleware.registerLimiter,

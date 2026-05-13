@@ -32,8 +32,9 @@ const {
   deleteUserById,
   generateRefreshToken,
 } = require('~/models');
-const { registerSchema } = require('~/strategies/validators');
+const { createRegisterSchema, registerSchema } = require('~/strategies/validators');
 const { getAppConfig } = require('~/server/services/Config');
+const { isHunNumberAvailable, verifyHunToken } = require('~/server/services/HunService');
 const { sendEmail } = require('~/server/utils');
 
 const domains = {
@@ -170,12 +171,20 @@ const verifyEmail = async (req) => {
 
 /**
  * Register a new user.
- * @param {IUser} user <email, password, name, username>
+ * @param {IUser} user <email, password, name, username, hunNumber, dateOfBirth>
  * @param {Partial<IUser>} [additionalData={}]
+ * @param {{ requireDateOfBirth?: boolean, requireHun?: boolean }} [options={}]
  * @returns {Promise<{status: number, message: string, user?: IUser}>}
  */
-const registerUser = async (user, additionalData = {}) => {
-  const { error } = registerSchema.safeParse(user);
+const registerUser = async (user, additionalData = {}, options = {}) => {
+  const schema =
+    options.requireDateOfBirth || options.requireHun
+      ? createRegisterSchema({
+          requireDateOfBirth: !!options.requireDateOfBirth,
+          requireHun: !!options.requireHun,
+        })
+      : registerSchema;
+  const { data: parsedUser, error } = schema.safeParse(user);
   if (error) {
     const errorMessage = errorsToString(error.errors);
     logger.info(
@@ -187,7 +196,8 @@ const registerUser = async (user, additionalData = {}) => {
     return { status: 404, message: errorMessage };
   }
 
-  const { email, password, name, username, provider } = user;
+  const { dateOfBirth, email, hunNumber, hunToken, name, password, provider, username } =
+    parsedUser;
 
   let newUserId;
   try {
@@ -197,6 +207,19 @@ const registerUser = async (user, additionalData = {}) => {
         'The email address provided cannot be used. Please use a different email address.';
       logger.error(`[registerUser] [Registration not allowed] [Email: ${user.email}]`);
       return { status: 403, message: errorMessage };
+    }
+
+    if (options.requireHun) {
+      if (!verifyHunToken(hunNumber, hunToken)) {
+        return { status: 400, message: 'Invalid HUN registration token' };
+      }
+
+      if (!(await isHunNumberAvailable(hunNumber))) {
+        return {
+          status: 409,
+          message: 'That HUN number was just assigned. Please refresh and try again.',
+        };
+      }
     }
 
     const existingUser = await findUser({ email }, 'email _id');
@@ -222,6 +245,8 @@ const registerUser = async (user, additionalData = {}) => {
       email,
       username,
       name,
+      ...(hunNumber ? { hunNumber } : {}),
+      ...(dateOfBirth ? { dateOfBirth } : {}),
       avatar: null,
       role: isFirstRegisteredUser ? SystemRoles.ADMIN : SystemRoles.USER,
       password: bcrypt.hashSync(password, salt),
@@ -246,6 +271,12 @@ const registerUser = async (user, additionalData = {}) => {
     return { status: 200, message: genericVerificationMessage };
   } catch (err) {
     logger.error('[registerUser] Error in registering user:', err);
+    if (err?.code === 11000 && err?.keyPattern?.hunNumber) {
+      return {
+        status: 409,
+        message: 'That HUN number was just assigned. Please refresh and try again.',
+      };
+    }
     if (newUserId) {
       const result = await deleteUserById(newUserId);
       logger.warn(

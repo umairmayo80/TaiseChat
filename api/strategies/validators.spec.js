@@ -1,6 +1,19 @@
 // file deepcode ignore NoHardcodedPasswords: No hard-coded passwords in tests
 const { errorsToString } = require('librechat-data-provider');
-const { loginSchema, registerSchema } = require('./validators');
+const {
+  UNDER_18_MESSAGE,
+  createRegisterSchema,
+  loginSchema,
+  registerSchema,
+} = require('./validators');
+
+const dateYearsAgo = (years, dayOffset = 0) => {
+  const date = new Date();
+  date.setUTCHours(12, 0, 0, 0);
+  date.setUTCFullYear(date.getUTCFullYear() - years);
+  date.setUTCDate(date.getUTCDate() + dayOffset);
+  return date.toISOString().slice(0, 10);
+};
 
 describe('Zod Schemas', () => {
   describe('loginSchema', () => {
@@ -97,6 +110,52 @@ describe('Zod Schemas', () => {
       });
 
       expect(result.success).toBe(true);
+    });
+
+    it('should validate required HUN and DOB for public registration', () => {
+      const schema = createRegisterSchema({ requireDateOfBirth: true, requireHun: true });
+      const result = schema.safeParse({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        confirm_password: 'password123',
+        dateOfBirth: dateYearsAgo(18),
+        hunNumber: 'HUN-198-777-888',
+        hunToken: 'signed-token',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject invalid DOB format for public registration', () => {
+      const schema = createRegisterSchema({ requireDateOfBirth: true, requireHun: true });
+      const result = schema.safeParse({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        confirm_password: 'password123',
+        dateOfBirth: '01/01/2000',
+        hunNumber: 'HUN-198-777-888',
+        hunToken: 'signed-token',
+      });
+
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject under 18 DOB for public registration', () => {
+      const schema = createRegisterSchema({ requireDateOfBirth: true, requireHun: true });
+      const result = schema.safeParse({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        confirm_password: 'password123',
+        dateOfBirth: dateYearsAgo(18, 1),
+        hunNumber: 'HUN-198-777-888',
+        hunToken: 'signed-token',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.errors.some((error) => error.message === UNDER_18_MESSAGE)).toBe(true);
     });
 
     it('should invalidate a short name', () => {

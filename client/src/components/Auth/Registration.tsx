@@ -1,14 +1,73 @@
 import { useForm } from 'react-hook-form';
+import { useQuery } from '@tanstack/react-query';
 import React, { useContext, useState } from 'react';
 import { Turnstile } from '@marsidev/react-turnstile';
 import { ThemeContext, Spinner, Button, isDark } from '@librechat/client';
 import { useNavigate, useOutletContext, useLocation } from 'react-router-dom';
 import { useRegisterUserMutation } from 'librechat-data-provider/react-query';
-import { loginPage } from 'librechat-data-provider';
+import { dataService, loginPage, QueryKeys } from 'librechat-data-provider';
 import type { TRegisterUser, TError } from 'librechat-data-provider';
 import type { TLoginLayoutContext } from '~/common';
 import { useLocalize, TranslationKeys } from '~/hooks';
 import { ErrorMessage } from './ErrorMessage';
+
+type RegistrationField = 'name' | 'email' | 'password' | 'confirm_password' | 'dateOfBirth';
+
+const dateOfBirthRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+const parseDateOnly = (value: string) => {
+  if (!dateOfBirthRegex.test(value)) {
+    return null;
+  }
+
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return { year, month, day };
+};
+
+const isValidDateOfBirth = (value: string) => {
+  const parsed = parseDateOnly(value);
+  if (!parsed) {
+    return false;
+  }
+
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const currentMonth = now.getUTCMonth() + 1;
+  const currentDay = now.getUTCDate();
+
+  if (parsed.year > currentYear) {
+    return false;
+  }
+  if (parsed.year === currentYear && parsed.month > currentMonth) {
+    return false;
+  }
+  return !(parsed.year === currentYear && parsed.month === currentMonth && parsed.day > currentDay);
+};
+
+const isAtLeast18 = (value: string) => {
+  const parsed = parseDateOnly(value);
+  if (!parsed) {
+    return false;
+  }
+
+  const now = new Date();
+  let age = now.getUTCFullYear() - parsed.year;
+  const currentMonth = now.getUTCMonth() + 1;
+  const currentDay = now.getUTCDate();
+  if (currentMonth < parsed.month || (currentMonth === parsed.month && currentDay < parsed.day)) {
+    age -= 1;
+  }
+  return age >= 18;
+};
 
 const Registration: React.FC = () => {
   const navigate = useNavigate();
@@ -37,6 +96,18 @@ const Registration: React.FC = () => {
   // only require captcha if we have a siteKey
   const requireCaptcha = Boolean(startupConfig?.turnstile?.siteKey);
 
+  const {
+    data: hunRegistration,
+    isError: isHunError,
+    isLoading: isHunLoading,
+    refetch: refetchHun,
+  } = useQuery([QueryKeys.hunRegistration], () => dataService.getHunRegistration(), {
+    enabled: !startupConfigError && !isFetching,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    staleTime: Infinity,
+  });
+
   const registerUser = useRegisterUserMutation({
     onMutate: () => {
       setIsSubmitting(true);
@@ -61,25 +132,31 @@ const Registration: React.FC = () => {
       if ((error as TError).response?.data?.message) {
         setErrorMessage((error as TError).response?.data?.message ?? '');
       }
+      if ((error as TError).response?.status === 409) {
+        refetchHun();
+      }
     },
   });
 
-  const renderInput = (id: string, label: TranslationKeys, type: string, validation: object) => (
+  const renderInput = (
+    id: RegistrationField,
+    label: TranslationKeys,
+    type: string,
+    validation: object,
+  ) => (
     <div className="mb-4">
       <div className="relative">
         <input
           id={id}
           type={type}
-          autoComplete={id}
+          autoComplete={id === 'dateOfBirth' ? 'bday' : id}
           aria-label={localize(label)}
-          {...register(
-            id as 'name' | 'email' | 'username' | 'password' | 'confirm_password',
-            validation,
-          )}
+          {...register(id, validation)}
           aria-invalid={!!errors[id]}
           className="webkit-dark-styles transition-color peer w-full rounded-2xl border border-border-light bg-surface-primary px-3.5 pb-2.5 pt-3 text-text-primary duration-200 focus:border-green-500 focus:outline-none"
           placeholder=" "
           data-testid={id}
+          max={id === 'dateOfBirth' ? new Date().toISOString().slice(0, 10) : undefined}
         />
         <label
           htmlFor={id}
@@ -95,6 +172,43 @@ const Registration: React.FC = () => {
       )}
     </div>
   );
+
+  const renderHunField = () => {
+    const hunValue = hunRegistration?.hunNumber
+      ? `${localize('com_auth_hun_number')}: ${hunRegistration.hunNumber}`
+      : isHunLoading
+        ? localize('com_auth_hun_loading')
+        : localize('com_auth_hun_error');
+
+    return (
+      <div className="mb-4">
+        <div className="relative">
+          <input
+            id="hunNumber"
+            type="text"
+            readOnly
+            aria-busy={isHunLoading}
+            aria-label={localize('com_auth_hun_number')}
+            className="webkit-dark-styles transition-color peer w-full rounded-2xl border border-border-light bg-surface-primary px-3.5 pb-2.5 pt-3 text-text-primary duration-200 focus:border-green-500 focus:outline-none"
+            placeholder=" "
+            data-testid="hunNumber"
+            value={hunValue}
+          />
+          <label
+            htmlFor="hunNumber"
+            className="absolute start-3 top-1.5 z-10 origin-[0] -translate-y-4 scale-75 transform bg-surface-primary px-2 text-sm text-text-secondary-alt duration-200 peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:scale-100 peer-focus:top-1.5 peer-focus:-translate-y-4 peer-focus:scale-75 peer-focus:px-2 peer-focus:text-green-500 rtl:peer-focus:left-auto rtl:peer-focus:translate-x-1/4"
+          >
+            {localize('com_auth_hun_number')}
+          </label>
+        </div>
+        {isHunError && (
+          <span role="alert" className="mt-1 text-sm text-red-500">
+            {localize('com_auth_hun_error')}
+          </span>
+        )}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -123,9 +237,18 @@ const Registration: React.FC = () => {
             className="mt-6"
             aria-label="Registration form"
             method="POST"
-            onSubmit={handleSubmit((data: TRegisterUser) =>
-              registerUser.mutate({ ...data, token: token ?? undefined }),
-            )}
+            onSubmit={handleSubmit((data: TRegisterUser) => {
+              if (!hunRegistration) {
+                return;
+              }
+              registerUser.mutate({
+                ...data,
+                username: '',
+                hunNumber: hunRegistration.hunNumber,
+                hunToken: hunRegistration.hunToken,
+                token: token ?? undefined,
+              });
+            })}
           >
             {renderInput('name', 'com_auth_full_name', 'text', {
               required: localize('com_auth_name_required'),
@@ -138,14 +261,14 @@ const Registration: React.FC = () => {
                 message: localize('com_auth_name_max_length'),
               },
             })}
-            {renderInput('username', 'com_auth_username', 'text', {
-              minLength: {
-                value: 2,
-                message: localize('com_auth_username_min_length'),
-              },
-              maxLength: {
-                value: 80,
-                message: localize('com_auth_username_max_length'),
+            {renderHunField()}
+            {renderInput('dateOfBirth', 'com_auth_dob', 'date', {
+              required: localize('com_auth_dob_required'),
+              validate: (value: string) => {
+                if (!isValidDateOfBirth(value)) {
+                  return localize('com_auth_dob_invalid');
+                }
+                return isAtLeast18(value) || localize('com_auth_under_18');
               },
             })}
             {renderInput('email', 'com_auth_email', 'email', {
@@ -199,6 +322,9 @@ const Registration: React.FC = () => {
                 disabled={
                   Object.keys(errors).length > 0 ||
                   isSubmitting ||
+                  isHunLoading ||
+                  isHunError ||
+                  !hunRegistration ||
                   (requireCaptcha && !turnstileToken)
                 }
                 type="submit"

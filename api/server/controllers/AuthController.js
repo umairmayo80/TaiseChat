@@ -18,11 +18,26 @@ const {
   findUser,
 } = require('~/models');
 const { getGraphApiToken } = require('~/server/services/GraphTokenService');
+const { createHunRegistration } = require('~/server/services/HunService');
 const { getOpenIdConfig, getOpenIdEmail } = require('~/strategies');
+
+const hunController = async (_req, res) => {
+  try {
+    const response = await createHunRegistration();
+    return res.status(200).json(response);
+  } catch (err) {
+    logger.error('[hunController]', err);
+    return res.status(500).json({ message: err.message });
+  }
+};
 
 const registrationController = async (req, res) => {
   try {
-    const response = await registerUser(req.body);
+    const response = await registerUser(
+      req.body,
+      {},
+      { requireDateOfBirth: true, requireHun: true },
+    );
     const { status, message } = response;
     res.status(status).send({ message });
   } catch (err) {
@@ -219,6 +234,7 @@ const graphTokenController = async (req, res) => {
 };
 
 module.exports = {
+  hunController,
   refreshController,
   registrationController,
   resetPasswordController,
