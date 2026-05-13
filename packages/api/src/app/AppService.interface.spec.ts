@@ -154,4 +154,24 @@ describe('AppService interface configuration', () => {
     // Verify that peoplePicker is undefined when not provided
     expect(result.interfaceConfig?.peoplePicker).toBeUndefined();
   });
+
+  it('should default prompt tools to false when not provided in config', async () => {
+    const config = {};
+
+    const result = await AppService({ config });
+
+    expect(result.interfaceConfig?.tools).toBe(false);
+  });
+
+  it('should allow prompt tools when explicitly enabled in config', async () => {
+    const config = {
+      interface: {
+        tools: true,
+      },
+    };
+
+    const result = await AppService({ config });
+
+    expect(result.interfaceConfig?.tools).toBe(true);
+  });
 });

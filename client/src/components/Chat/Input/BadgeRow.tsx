@@ -404,7 +404,7 @@ function BadgeRow({
           </div>
         )}
       </div>
-      <ToolDialogs />
+      {showEphemeralBadges === true && <ToolDialogs />}
     </BadgeRowProvider>
   );
 }
