@@ -175,7 +175,7 @@ const Registration: React.FC = () => {
 
   const renderHunField = () => {
     const hunValue = hunRegistration?.hunNumber
-      ? `${localize('com_auth_hun_number')}: ${hunRegistration.hunNumber}`
+      ? hunRegistration.hunNumber
       : isHunLoading
         ? localize('com_auth_hun_loading')
         : localize('com_auth_hun_error');

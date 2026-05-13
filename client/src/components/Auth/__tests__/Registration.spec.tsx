@@ -82,7 +82,7 @@ const setup = ({
     data: {},
   },
   useGetStartupConfigReturnValue = mockStartupConfig,
-} = {}) => {
+}: Record<string, any> = {}) => {
   const mockGetHunRegistration = dataProvider.dataService.getHunRegistration as jest.Mock;
   mockGetHunRegistration.mockResolvedValue({
     hunNumber: 'HUN-198-777-888',
@@ -91,7 +91,11 @@ const setup = ({
   const mockUseRegisterUserMutation = jest
     .spyOn(mockDataProvider, 'useRegisterUserMutation')
     //@ts-ignore - we don't need all parameters of the QueryObserverSuccessResult
-    .mockReturnValue(useRegisterUserMutationReturnValue);
+    .mockImplementation((options: unknown) =>
+      typeof useRegisterUserMutationReturnValue === 'function'
+        ? useRegisterUserMutationReturnValue(options)
+        : useRegisterUserMutationReturnValue,
+    );
   const mockUseGetUserQuery = jest
     .spyOn(authQueries, 'useGetUserQuery')
     //@ts-ignore - we don't need all parameters of the QueryObserverSuccessResult
@@ -148,7 +152,7 @@ test('renders registration form', async () => {
   expect(getByRole('textbox', { name: /Full name/i })).toBeInTheDocument();
   expect(getByRole('form', { name: /Registration form/i })).toBeVisible();
   expect(queryByRole('textbox', { name: /Username/i })).not.toBeInTheDocument();
-  await waitFor(() => expect(getByTestId('hunNumber')).toHaveValue('Your HUN: HUN-198-777-888'));
+  await waitFor(() => expect(getByTestId('hunNumber')).toHaveValue('HUN-198-777-888'));
   expect(getByLabelText(/DOB/i)).toBeInTheDocument();
   expect(getByRole('textbox', { name: /Email/i })).toBeInTheDocument();
   expect(getByTestId('password')).toBeInTheDocument();
@@ -230,19 +234,25 @@ test('shows validation error messages', async () => {
 });
 
 test('shows error message when registration fails', async () => {
-  const mutate = jest.fn();
   const { getByTestId, getByRole } = setup({
-    useRegisterUserMutationReturnValue: {
+    useRegisterUserMutationReturnValue: ({ onError }: { onError: (error: unknown) => void }) => ({
       isLoading: false,
       isError: true,
-      mutate,
+      mutate: () =>
+        onError({
+          response: {
+            data: {
+              message: 'Registration failed',
+            },
+          },
+        }),
       error: new Error('Registration failed'),
       data: {},
       isSuccess: false,
-    },
+    }),
   });
 
-  await waitFor(() => expect(getByTestId('hunNumber')).toHaveValue('Your HUN: HUN-198-777-888'));
+  await waitFor(() => expect(getByTestId('hunNumber')).toHaveValue('HUN-198-777-888'));
   await userEvent.type(getByRole('textbox', { name: /Full name/i }), 'John Doe');
   await userEvent.type(getByTestId('dateOfBirth'), dateYearsAgo(18));
   await userEvent.type(getByRole('textbox', { name: /Email/i }), 'test@test.com');
@@ -250,11 +260,12 @@ test('shows error message when registration fails', async () => {
   await userEvent.type(getByTestId('confirm_password'), 'password');
   await userEvent.click(getByRole('button', { name: /Submit registration/i }));
 
-  waitFor(() => {
-    expect(screen.getByTestId('registration-error')).toBeInTheDocument();
-    expect(screen.getByTestId('registration-error')).toHaveTextContent(
+  await waitFor(() => {
+    const errorMessage = screen.getByText(
       /There was an error attempting to register your account. Please try again. Registration failed/i,
     );
+    expect(errorMessage).toBeInTheDocument();
+    expect(errorMessage.closest('[role="alert"]')).toBeInTheDocument();
   });
 });
 
@@ -271,7 +282,7 @@ test('submits HUN and DOB with registration payload', async () => {
     },
   });
 
-  await waitFor(() => expect(getByTestId('hunNumber')).toHaveValue('Your HUN: HUN-198-777-888'));
+  await waitFor(() => expect(getByTestId('hunNumber')).toHaveValue('HUN-198-777-888'));
   await userEvent.type(getByRole('textbox', { name: /Full name/i }), 'John Doe');
   await userEvent.type(getByTestId('dateOfBirth'), dateYearsAgo(18));
   await userEvent.type(getByRole('textbox', { name: /Email/i }), 'test@test.com');
