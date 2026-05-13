@@ -34,6 +34,8 @@ import { startupConfigKey } from '~/data-provider';
 import useUserKey from '~/hooks/Input/useUserKey';
 import { useAuthContext } from '~/hooks';
 
+const TAISE_ASSISTANT_NAME = 'TAISE';
+
 const logChatRequest = (request: Record<string, unknown>) => {
   logger.log('=====================================\nAsk function called with:');
   logger.dir(request);
@@ -245,7 +247,10 @@ export default function useChatFunctions({
     } else {
       endpointOption.key = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     }
-    const responseSender = getSender({ model: conversation?.model, ...endpointOption });
+    const responseSender =
+      isAgentsEndpoint(endpoint) || isAssistantsEndpoint(endpoint)
+        ? getSender({ model: conversation?.model, ...endpointOption })
+        : TAISE_ASSISTANT_NAME;
 
     const currentMsg: TMessage = {
       text,

@@ -19,6 +19,8 @@ import { useGetAddedConvo } from '~/hooks/Chat';
 import { useLocalize } from '~/hooks';
 import store from '~/store';
 
+const TAISE_ASSISTANT_NAME = 'TAISE';
+
 export type TMessageActions = Pick<
   TMessageProps,
   'message' | 'currentEditId' | 'setCurrentEditId'
@@ -131,7 +133,7 @@ export default function useMessageActions(props: TMessageActions) {
     } else if (assistant) {
       return assistant.name ?? 'Assistant';
     } else {
-      return message?.sender;
+      return TAISE_ASSISTANT_NAME;
     }
   }, [message, agent, assistant, UsernameDisplay, user, localize]);
 
