@@ -5,6 +5,7 @@
 /* Custom Variables */
 :root {
   --white: #fff;
+  --taise-off-white: #faf8f2;
   --black: #000;
   --gray-20: #ececf1;
   --gray-50: #f7f7f8;
@@ -64,7 +65,7 @@
 }
 html {
   --brand-purple: #ab68ff;
-  --presentation: var(--white);
+  --presentation: var(--taise-off-white);
   --text-primary: var(--gray-800);
   --text-secondary: var(--gray-600);
   --text-secondary-alt: var(--gray-500);
@@ -185,6 +186,65 @@ html {
   --chart-4: 280 65% 60%;
   --chart-5: 340 75% 55%;
   --switch-unchecked: 0 0% 40%;
+}
+
+.taise-offwhite-app {
+  --presentation: var(--taise-off-white);
+}
+
+.dark .taise-offwhite-app {
+  --presentation: var(--taise-off-white);
+  --text-primary: var(--gray-800);
+  --text-secondary: var(--gray-600);
+  --text-secondary-alt: var(--gray-500);
+  --text-tertiary: var(--gray-500);
+  --surface-active: var(--gray-100);
+  --surface-active-alt: var(--gray-200);
+  --surface-hover: var(--gray-200);
+  --surface-hover-alt: var(--gray-300);
+  --surface-primary: var(--taise-off-white);
+  --surface-primary-alt: #f2efe8;
+  --surface-primary-contrast: var(--gray-100);
+  --surface-secondary: #f2efe8;
+  --surface-secondary-alt: var(--gray-200);
+  --surface-tertiary: var(--gray-100);
+  --surface-tertiary-alt: var(--taise-off-white);
+  --surface-dialog: var(--white);
+  --surface-chat: var(--white);
+  --border-light: #e6dfd3;
+  --border-medium-alt: #d9d2c6;
+  --border-medium: #d9d2c6;
+  --border-heavy: #b8b1a6;
+  --border-xheavy: var(--gray-500);
+}
+
+.dark .taise-offwhite-app .prose,
+.dark .taise-offwhite-app .dark\:prose-invert {
+  --tw-prose-body: var(--gray-800);
+  --tw-prose-headings: var(--gray-900);
+  --tw-prose-lead: var(--gray-700);
+  --tw-prose-links: var(--gray-900);
+  --tw-prose-bold: var(--gray-900);
+  --tw-prose-counters: var(--gray-600);
+  --tw-prose-bullets: var(--gray-600);
+  --tw-prose-hr: #d9d2c6;
+  --tw-prose-quotes: var(--gray-900);
+  --tw-prose-quote-borders: #d9d2c6;
+  --tw-prose-captions: var(--gray-600);
+  --tw-prose-code: var(--gray-900);
+  --tw-prose-pre-code: var(--gray-100);
+  --tw-prose-pre-bg: var(--gray-800);
+  --tw-prose-th-borders: #d9d2c6;
+  --tw-prose-td-borders: #e6dfd3;
+}
+
+.dark .taise-offwhite-app .dark\:text-gray-100,
+.dark .taise-offwhite-app .dark\:text-gray-20 {
+  color: var(--gray-800);
+}
+
+.dark .taise-offwhite-app .dark\:placeholder-white\/60::placeholder {
+  color: rgba(66, 66, 66, 0.6);
 }
 .gizmo {
   --text-primary: var(--gizmo-gray-950);
